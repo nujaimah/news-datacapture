@@ -1,0 +1,57 @@
+import asyncio
+from playwright.async_api import async_playwright
+
+async def screenshot_before_my_local(url, output_file):
+    # Start a Playwright session with async support
+    async with async_playwright() as p:
+        # Launch Chromium in non-headless mode (pop up window)
+        browser = await p.chromium.launch(
+            headless=False,  
+            args=["--disable-http2", "--disable-http2-server-push"]  # Workaround for HTTP2 protocol errors on CBC
+        )
+
+        # Create an incognito browser context
+        context = await browser.new_context(
+            viewport={"width": 1600, "height": 4000},  # Use a wide viewport to force desktop layout and include sidebar
+            ignore_https_errors=True,  # Ignore HTTPS errors for compatibility
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+
+        page = await context.new_page()  # Create a new page/tab in the browser
+
+        try:
+            # Go to the URL and wait until the DOM is loaded
+            await page.goto(url, wait_until="domcontentloaded", timeout=180000)
+            # Wait for the "My Local" section heading to appear
+            await page.wait_for_selector('h2.heading-element.heading-element-h2[data-cy="heading-element"]', timeout=120000)
+            # Wait for the right sidebar "Popular Now" section to render, so it appears in screenshot
+            await page.wait_for_selector('text="Popular Now"', timeout=180000)
+
+            # Find the bounding box of the "My Local" element, and set screenshot to only include from top to that point,
+            # with the whole width of the rendered document, so the sidebar and all content is included.
+            box = await page.evaluate("""
+                () => {
+                    const myLocal = document.querySelector('h2.heading-element.heading-element-h2[data-cy="heading-element"]');
+                    if (!myLocal) return null;
+                    const rect = myLocal.getBoundingClientRect();
+                    // Use scrollWidth to capture the full width (content + sidebar)
+                    return { x: 0, y: 0, width: document.documentElement.scrollWidth, height: rect.top };
+                }
+            """)
+
+            if box and box["height"] > 0:
+                await page.screenshot(path=output_file, clip=box)  # Take screenshot of specified area only
+                print(f"Screenshotted homepage up to just before 'My Local' as {output_file}")
+            else:
+                # Fallback: if bounding box not found or "My Local" not visible, use a normal screenshot of current view
+                print("Could not find correct cutoff before 'My Local'; taking viewport shot.")
+                await page.screenshot(path=output_file)
+
+        except Exception as e:
+            print("Failed:", e)
+        await browser.close()
+
+url = "https://www.cbc.ca/news"
+output_file = "cbc_homepage_before_mylocal.png"
+asyncio.run(screenshot_before_my_local(url, output_file))
+
