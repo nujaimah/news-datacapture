@@ -1,2 +1,2 @@
 # news-datacapture
-Scripts for news page data captures
+Scripts for news page data captures.
