@@ -1,57 +1,115 @@
 import asyncio
+from datetime import datetime
+import re
+from newspaper import build
 from playwright.async_api import async_playwright
 
-async def screenshot_before_my_local(url, output_file):
-    # Start a Playwright session with async support
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build as gsheet_build
+
+# Google Sheets setup
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_FILE = 'credentials.json'
+SPREADSHEET_ID = 'google_sheet_id_here' # Replace with Google Sheet ID  
+SHEET_NAME = "Sheet1"
+
+def extract_cbc_article_urls():
+    cbc_paper = build('https://www.cbc.ca/news', memoize_articles=False)
+    article_urls = []
+    for article in cbc_paper.articles:
+        url = article.url
+        if (
+            "/news/" in url and
+            re.search(r'-\d+\.\d+$', url) and
+            not any(sub in url for sub in ["/player/", "/radio/", "/music/", "/television/", "/documentaries/", "/books/"])
+        ):
+            article_urls.append(url)
+    return article_urls
+
+async def save_pdf_with_metadata(playwright_page, url):
+    await playwright_page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    await playwright_page.wait_for_timeout(2000)
+
+    title_element = await playwright_page.query_selector("h1")
+    title = await title_element.inner_text() if title_element else "No title found"
+    author_element = await playwright_page.query_selector("span.authorText a")
+    author = await author_element.inner_text() if author_element else "No author found"
+    date_element = await playwright_page.query_selector("time, .date, .posted-date, [class*='date']")
+    date_posted = await date_element.inner_text() if date_element else "No date found"
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    safe_title = "".join(c for c in title if c.isalnum() or c in (" ", "-")).replace(" ", "_")[:60]
+    pdf_file = f"cbc_article_{safe_title}_{date_str}.pdf"
+
+    print(f"Title: {title}")
+    print(f"Author: {author}")
+    print(f"Date posted: {date_posted}")
+    print(f"Saving PDF: {pdf_file}")
+
+    await playwright_page.pdf(
+        path=pdf_file,
+        format="A4",
+        print_background=True,
+        margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"}
+    )
+
+    return (title, author, url, date_posted)  # Return metadata for Google Sheets
+
+def append_to_google_sheet(data_rows):
+    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    service = gsheet_build('sheets', 'v4', credentials=creds)
+    sheet = service.spreadsheets()
+
+    body = {
+        'values': data_rows
+    }
+    result = sheet.values().append(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{SHEET_NAME}!A:D",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body=body
+    ).execute()
+    print(f"{result.get('updates').get('updatedRows')} rows appended to Google Sheet")
+
+async def main():
+    homepage_url = "https://www.cbc.ca/news"
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    homepage_pdf = f"cbc_homepage_{date_str}.pdf"
+
+    article_urls = extract_cbc_article_urls()
+    print(f"Filtered {len(article_urls)} news articles:")
+    for url in article_urls:
+        print(url)
+
+    metadata_rows = []
+
     async with async_playwright() as p:
-        # Launch Chromium in non-headless mode (pop up window)
-        browser = await p.chromium.launch(
-            headless=False,  
-            args=["--disable-http2", "--disable-http2-server-push"]  # Workaround for HTTP2 protocol errors on CBC
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context(viewport={"width": 1600, "height": 4000}, ignore_https_errors=True)
+        page = await context.new_page()
+
+        await page.goto(homepage_url, wait_until="domcontentloaded", timeout=120000)
+        await page.wait_for_timeout(2000)
+        await page.pdf(
+            path=homepage_pdf,
+            format="A4",
+            print_background=True,
+            margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"}
         )
+        print(f"Homepage PDF saved as {homepage_pdf}")
 
-        # Create an incognito browser context
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 4000},  # Use a wide viewport to force desktop layout and include sidebar
-            ignore_https_errors=True,  # Ignore HTTPS errors for compatibility
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+        for link in article_urls:
+            article_page = await context.new_page()
+            meta = await save_pdf_with_metadata(article_page, link)
+            metadata_rows.append(meta)
+            await article_page.close()
 
-        page = await context.new_page()  # Create a new page/tab in the browser
-
-        try:
-            # Go to the URL and wait until the DOM is loaded
-            await page.goto(url, wait_until="domcontentloaded", timeout=180000)
-            # Wait for the "My Local" section heading to appear
-            await page.wait_for_selector('h2.heading-element.heading-element-h2[data-cy="heading-element"]', timeout=120000)
-            # Wait for the right sidebar "Popular Now" section to render, so it appears in screenshot
-            await page.wait_for_selector('text="Popular Now"', timeout=180000)
-
-            # Find the bounding box of the "My Local" element, and set screenshot to only include from top to that point,
-            # with the whole width of the rendered document, so the sidebar and all content is included.
-            box = await page.evaluate("""
-                () => {
-                    const myLocal = document.querySelector('h2.heading-element.heading-element-h2[data-cy="heading-element"]');
-                    if (!myLocal) return null;
-                    const rect = myLocal.getBoundingClientRect();
-                    // Use scrollWidth to capture the full width (content + sidebar)
-                    return { x: 0, y: 0, width: document.documentElement.scrollWidth, height: rect.top };
-                }
-            """)
-
-            if box and box["height"] > 0:
-                await page.screenshot(path=output_file, clip=box)  # Take screenshot of specified area only
-                print(f"Screenshotted homepage up to just before 'My Local' as {output_file}")
-            else:
-                # Fallback: if bounding box not found or "My Local" not visible, use a normal screenshot of current view
-                print("Could not find correct cutoff before 'My Local'; taking viewport shot.")
-                await page.screenshot(path=output_file)
-
-        except Exception as e:
-            print("Failed:", e)
         await browser.close()
 
-url = "https://www.cbc.ca/news"
-output_file = "cbc_homepage_before_mylocal.png"
-asyncio.run(screenshot_before_my_local(url, output_file))
+    # Append all metadata rows to Google Sheet
+    append_to_google_sheet(metadata_rows)
 
+if __name__ == "__main__":
+    asyncio.run(main())
