@@ -19,6 +19,7 @@ This script uses the *Playwright* and *Newspaper* Python libraries to capture PD
 ## Requirements
 
 **Python Version:** 3.9 or newer
+
 **Ability to run Chromium in headless mode (Playwright will install it)**
 
 Install required packages and browser dependencies:
