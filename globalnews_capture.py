@@ -14,9 +14,9 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/drive']
 CLIENT_SECRETS_FILE = 'credentials.json'
 TOKEN_PICKLE = 'token.json'
-SPREADSHEET_ID = '1wi6wBVBoMWeBupD8Zd4rUMtdqqZNruJBSqtcG9Sxwxc'
-SHEET_NAME = "Sheet1"
-GLOBALNEWS_CAPTURE_FOLDER_ID = '1blzQ6rVBNyOcHHRDVrKVaTIcqmI-2eWe'
+SPREADSHEET_ID = 'NAME' # Enter Google Sheet ID
+SHEET_NAME = "NAME" # Enter Google Sheet Tab Name
+GLOBALNEWS_CAPTURE_FOLDER_ID = 'NAME' # Enter Google Drive folder ID
 
 def get_oauth_credentials():
     creds = None
