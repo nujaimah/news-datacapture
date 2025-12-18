@@ -14,9 +14,9 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/drive']
 CLIENT_SECRETS_FILE = 'credentials.json'
 TOKEN_PICKLE = 'token.json'
-SPREADSHEET_ID = "1S8aQj-i8QvIqhuzCk46cVDNRSIqjrcNEHoZ-ZTWnqYE"
-SHEET_NAME = "Sheet1"
-LAPRESSE_CAPTURE_FOLDER_ID = "14fy3OZudXZMAFiO4TRGpCatc9DQ8z8KC"
+SPREADSHEET_ID = "NAME" # Enter Google Sheet ID
+SHEET_NAME = "NAME" # Enter Google Sheet name
+LAPRESSE_CAPTURE_FOLDER_ID = "NAME" # Enter Google Drive folder ID
 LA_PRESSE_HOMEPAGE = "https://www.lapresse.ca/"
 ARTICLE_PATTERN = re.compile(
     r"^https?://www\.lapresse\.ca/.+/\d{4}-\d{2}-\d{2}/.+\.php$"
