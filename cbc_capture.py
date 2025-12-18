@@ -10,19 +10,16 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
 
-
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/drive']
 CLIENT_SECRETS_FILE = 'credentials.json' # Credentials file for Google Drive access
 TOKEN_PICKLE = 'token.json' # Token file for Google Drive access
 
+SPREADSHEET_ID = 'NAME' # Enter Google Sheet ID 
+SHEET_NAME = "NAME" # Enter Google Sheet tab name
+CBC_CAPTURE_FOLDER_ID = 'NAME' # Enter Google Drive folder ID
 
-SPREADSHEET_ID = 'NAME' # Enter the unique Google Sheet ID here
-SHEET_NAME = "NAME" # Enter the name of the tab in the Google Sheet for data to be populated to
-
-CBC_CAPTURE_FOLDER_ID = 'NAME' # Enter the unique Google Drive folder ID here
-
-
+# Getting Google Credentials for accessing Google Drive
 def get_oauth_credentials():
     creds = None
     if os.path.exists(TOKEN_PICKLE):
@@ -38,7 +35,7 @@ def get_oauth_credentials():
             pickle.dump(creds, token)
     return creds
 
-
+# Create a new folder in Google Drive with the current date 
 def create_dated_capture_folder(drive_service):
     date_str = datetime.now().strftime("%Y-%m-%d")
     folder_metadata = {
@@ -54,7 +51,7 @@ def create_dated_capture_folder(drive_service):
     print(f"Created capture folder for {date_str} with ID {folder_id}")
     return folder_id
 
-
+# Extract all article links from the homepage 
 async def extract_relevant_article_links(page):
     await page.wait_for_selector("a")
     link_elements = await page.query_selector_all("a")
@@ -81,7 +78,6 @@ async def extract_relevant_article_links(page):
 
     print(f"Extracted {len(article_urls)} relevant article URLs (including kidsnews posts)")
     return article_urls
-
 
 async def trigger_player_links(page):
     try:
@@ -231,7 +227,6 @@ async def extract_cbc_article_info(page):
 
     return sorted(video_audio_links), authors_info
 
-
 async def check_ai_mention(page):
     keywords = ["ChatGPT", "automated", "robot", "AI tools", "data team", "OpenAI", "Otter.ai",
                 "AI-Based", "artificial intelligence", "machine learning", "AI model",
@@ -261,7 +256,6 @@ async def check_ai_mention(page):
         return "False"
     except Exception:
         return "False"
-
 
 async def extract_author_info(page):
     try:
@@ -306,7 +300,6 @@ async def extract_author_info(page):
         return ", ".join(sorted(tokens)) if tokens else ""
     except Exception:
         return ""
-
 
 async def save_pdf_with_metadata(playwright_page, url, drive_service, folder_id):
     await playwright_page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -360,7 +353,6 @@ async def save_pdf_with_metadata(playwright_page, url, drive_service, folder_id)
 
     return (title, author, url, date_posted)
 
-
 def append_to_google_sheet(data_rows, service):
     sheet = service.spreadsheets()
     body = {'values': data_rows}
@@ -372,7 +364,6 @@ def append_to_google_sheet(data_rows, service):
         body=body
     ).execute()
     print(f"{result.get('updates').get('updatedRows')} rows appended to Google Sheet")
-
 
 def ensure_header_row(service):
     sheet = service.spreadsheets()
@@ -392,7 +383,6 @@ def ensure_header_row(service):
         valueInputOption="RAW",
         body={'values': header}
     ).execute()
-
 
 async def main():
     creds = get_oauth_credentials()
@@ -470,7 +460,6 @@ async def main():
         await browser.close()
 
     append_to_google_sheet(metadata_rows, sheet_service)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
